@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The 17th Star</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;700&family=Cinzel:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Noto Serif SC', serif; }
+        canvas { display: block; position: fixed; top: 0; left: 0; z-index: 1; }
+        
+        /* Loading */
+        #loading {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.6); font-family: 'Cinzel', serif; letter-spacing: 4px; pointer-events: none; z-index: 20;
+        }
+
+        /* 按钮通用样式 */
+        .btn {
+            background: rgba(255,255,255,0.08); color: #fff; 
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 12px 30px; border-radius: 4px; cursor: pointer;
+            font-family: 'Cinzel', serif; font-size: 0.9rem; letter-spacing: 3px; text-transform: uppercase;
+            backdrop-filter: blur(4px); transition: all 0.5s ease;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        .btn:hover { 
+            background: rgba(255,255,255,0.2); 
+            box-shadow: 0 0 20px rgba(255,255,255,0.4); 
+            border-color: #fff;
+        }
+
+        /* 第一幕 UI */
+        .ui-layer { position: absolute; bottom: 15%; left: 0; width: 100%; text-align: center; z-index: 10; transition: opacity 0.8s; }
+
+        /* 信纸容器 */
+        #letter-container {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 85%; max-width: 550px;
+            background: rgba(10, 10, 15, 0.75); 
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 40px 80px rgba(0,0,0,0.9);
+            border-radius: 6px; padding: 40px;
+            color: #eee; z-index: 15; opacity: 0; pointer-events: none;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .letter-content { width: 100%; margin-bottom: 25px; }
+        .letter-content h2 { 
+            font-family: 'Cinzel', serif; font-size: 1.8rem; margin-bottom: 20px; 
+            color: #e0c3fc; text-align: center; text-shadow: 0 0 10px rgba(224, 195, 252, 0.3);
+        }
+        .letter-content p { 
+            font-size: 1.05rem; line-height: 1.9; margin-bottom: 12px; 
+            font-weight: 300; text-align: justify; color: #dcdcdc;
+        }
+        
+        /* 许愿按钮 */
+        #wishBtn { 
+            display: none; opacity: 0; margin-top: 10px; 
+            border-color: #ff9a9e; color: #ff9a9e;
+        }
+        #wishBtn:hover { background: rgba(255, 154, 158, 0.2); box-shadow: 0 0 20px #ff9a9e; }
+
+        .cursor { display: inline-block; width: 2px; height: 1.2em; background-color: #fff; animation: blink 1s infinite; }
+        @keyframes blink { 50% { opacity: 0; } }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="loading">INITIALIZING UNIVERSE...</div>
+    
+    <div class="ui-layer" id="ui">
+        <button class="btn" id="exploreBtn">Start Journey</button>
+    </div>
+
+    <div id="letter-container">
+        <div class="letter-content">
+            <h2 id="letter-title"></h2>
+            <div id="letter-body"></div>
+        </div>
+        <button class="btn" id="wishBtn">Make a Wish ✨</button>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'three';
+        import { FontLoader } from 'three/addons/loaders/FontLoader.js';
+        import { TextGeometry } from 'three/addons/geometries/TextGeometry.js';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import gsap from 'https://unpkg.com/gsap@3.12.5/index.js';
+
+        // ================= 配置区域 =================
+        const CONFIG = {
+            title3D: "17",
+            letterTitle: "致 17 岁的你",
+            letterBody: [
+                "这是一颗为你捕获的星球。",
+                "它的自转周期是你眨眼的瞬间，",
+                "它的光环是你嘴角的弧度。",
+                "希望在未来的日子里，",
+                "你不必去追赶月亮，",
+                "因为你本身就是发光体。",
+                "生日快乐。",
+                "\n—— [Friend's Name]"
+            ],
+            typingSpeed: 40,
+            particleCount: 7000,
+            // 颜色定义
+            colors: {
+                planetBottom: new THREE.Color(0x4b0082), // 深紫
+                planetTop: new THREE.Color(0x00bfff),    // 亮蓝
+                heartColor: new THREE.Color(0xff1493),   // 爱心粉红 (目标颜色)
+                fireworks: [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff]
+            }
+        };
+
+        // --- 场景与相机 ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.02); 
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 35);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- 后期处理 (Bloom) ---
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.strength = 1.2; bloomPass.radius = 0.5; bloomPass.threshold = 0.1;
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // ================= 1. 主角粒子系统 (变形金刚) =================
+        const pGeo = new THREE.BufferGeometry();
+        const positions = new Float32Array(CONFIG.particleCount * 3);
+        const colors = new Float32Array(CONFIG.particleCount * 3);
+        
+        // 数据缓存
+        const spherePos = []; // 行星形态坐标
+        const heartPos = [];  // 爱心形态坐标
+        const startColors = []; // 行星颜色
+        
+        // --- A. 构建行星数据 ---
+        const r = 8;
+        for(let i=0; i<CONFIG.particleCount; i++) {
+            const phi = Math.acos(-1 + (2 * i) / CONFIG.particleCount);
+            const theta = Math.sqrt(CONFIG.particleCount * Math.PI) * phi;
+            const x = r * Math.cos(theta) * Math.sin(phi);
+            const y = r * Math.sin(theta) * Math.sin(phi);
+            const z = r * Math.cos(phi);
+            
+            // 写入初始位置
+            positions[i*3] = x; positions[i*3+1] = y; positions[i*3+2] = z;
+            spherePos.push(x, y, z);
+
+            // 计算行星颜色 (渐变)
+            const color = new THREE.Color();
+            color.lerpColors(CONFIG.colors.planetBottom, CONFIG.colors.planetTop, (y/r + 1)/2);
+            colors[i*3] = color.r; colors[i*3+1] = color.g; colors[i*3+2] = color.b;
+            startColors.push(color.r, color.g, color.b);
+        }
+
+        // --- B. 构建爱心数据 ---
+        // 使用更饱满的心形公式
+        for(let i=0; i<CONFIG.particleCount; i++) {
+            const t = Math.PI - 2 * Math.PI * (i / CONFIG.particleCount); // 分布参数
+            const randomScale = 0.9 + Math.random() * 0.2; // 稍微打散，不要太整齐
+            
+            // Heart Formula
+            let x = 16 * Math.pow(Math.sin(t), 3);
+            let y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+            let z = (Math.random() - 0.5) * 6; // 厚度
+
+            // 缩放调整
+            const scale = 0.35;
+            x *= scale * randomScale;
+            y *= scale * randomScale;
+            z *= scale;
+
+            // 稍微把爱心往上提一点，居中
+            y += 2;
+
+            heartPos.push(x, y, z);
+        }
+
+        pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        pGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pMat = new THREE.PointsMaterial({
+            size: 0.15, vertexColors: true, blending: THREE.AdditiveBlending,
+            transparent: true, opacity: 0.8, depthWrite: false
+        });
+        const particles = new THREE.Points(pGeo, pMat);
+        scene.add(particles);
+
+        // ================= 2. 装饰性星环 =================
+        const ringGeo = new THREE.BufferGeometry();
+        const ringCount = 3000;
+        const ringPos = new Float32Array(ringCount * 3);
+        for(let i=0; i<ringCount; i++) {
+            const rRing = 12 + Math.random() * 6;
+            const angle = Math.random() * Math.PI * 2;
+            ringPos[i*3] = rRing * Math.cos(angle);
+            ringPos[i*3+1] = (Math.random()-0.5) * 0.5;
+            ringPos[i*3+2] = rRing * Math.sin(angle);
+        }
+        ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPos, 3));
+        const ringMesh = new THREE.Points(ringGeo, new THREE.PointsMaterial({color: 0xffd700, size: 0.1, transparent:true, opacity:0.5}));
+        ringMesh.rotation.set(Math.PI/6, Math.PI/6, 0);
+        scene.add(ringMesh);
+
+        // ================= 3. 烟花系统 (Fireworks) =================
+        const fireworks = []; // 存储当前活跃的烟花
+        const fwGeometry = new THREE.BufferGeometry(); // 复用几何体
+        // 预创建一个大 Buffer 供所有烟花粒子使用 (性能优化)
+        const fwMaxParticles = 3000; 
+        const fwPositions = new Float32Array(fwMaxParticles * 3);
+        const fwColors = new Float32Array(fwMaxParticles * 3);
+        const fwSizes = new Float32Array(fwMaxParticles);
+        
+        // 将所有烟花粒子先隐藏
+        for(let i=0; i<fwMaxParticles; i++) fwSizes[i] = 0;
+
+        fwGeometry.setAttribute('position', new THREE.BufferAttribute(fwPositions, 3));
+        fwGeometry.setAttribute('color', new THREE.BufferAttribute(fwColors, 3));
+        fwGeometry.setAttribute('size', new THREE.BufferAttribute(fwSizes, 1));
+
+        const fwMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                pointTexture: { value: new THREE.TextureLoader().load( "https://threejs.org/examples/textures/sprites/spark1.png" ) }
+            },
+            vertexShader: `
+                attribute float size;
+                varying vec3 vColor;
+                void main() {
+                    vColor = color;
+                    vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+                    gl_PointSize = size * ( 300.0 / -mvPosition.z );
+                    gl_Position = projectionMatrix * mvPosition;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D pointTexture;
+                varying vec3 vColor;
+                void main() {
+                    gl_FragColor = vec4( vColor, 1.0 );
+                    gl_FragColor = gl_FragColor * texture2D( pointTexture, gl_PointCoord );
+                }
+            `,
+            blending: THREE.AdditiveBlending,
+            depthTest: false,
+            transparent: true,
+            vertexColors: true
+        });
+        const fwSystem = new THREE.Points(fwGeometry, fwMaterial);
+        scene.add(fwSystem);
+
+        // 烟花类
+        class FireworkExplosion {
+            constructor(startIndex, count, x, y, z, color) {
+                this.startIndex = startIndex;
+                this.count = count;
+                this.life = 1.0; // 生命值 1.0 -> 0.0
+                this.positions = []; // 本地存储速度向量
+                
+                const speed = 0.5;
+                for(let i=0; i<count; i++) {
+                    // 球形爆炸速度向量
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos((Math.random() * 2) - 1);
+                    const v = 0.2 + Math.random() * speed;
+                    
+                    const vx = v * Math.sin(phi) * Math.cos(theta);
+                    const vy = v * Math.sin(phi) * Math.sin(theta);
+                    const vz = v * Math.cos(phi);
+                    
+                    this.positions.push({x:x, y:y, z:z, vx:vx, vy:vy, vz:vz});
+                    
+                    // 初始化 Buffer 属性
+                    const idx = (startIndex + i);
+                    fwColors[idx*3] = color.r;
+                    fwColors[idx*3+1] = color.g;
+                    fwColors[idx*3+2] = color.b;
+                    fwSizes[idx] = 1.0; // 初始大小
+                }
+            }
+            update() {
+                this.life -= 0.015; // 衰减
+                if(this.life <= 0) return false; // 死亡
+
+                for(let i=0; i<this.count; i++) {
+                    const p = this.positions[i];
+                    p.x += p.vx;
+                    p.y += p.vy;
+                    p.z += p.vz;
+                    p.vy -= 0.005; // 重力
+                    p.vx *= 0.98; // 空气阻力
+                    p.vy *= 0.98;
+                    p.vz *= 0.98;
+
+                    // 更新 Buffer
+                    const idx = (this.startIndex + i) * 3;
+                    fwPositions[idx] = p.x;
+                    fwPositions[idx+1] = p.y;
+                    fwPositions[idx+2] = p.z;
+                    
+                    // 大小随生命值减小
+                    fwSizes[this.startIndex + i] = this.life * 2.0; 
+                }
+                return true;
+            }
+        }
+
+        let fwIndexPointer = 0;
+        function launchFirework() {
+            const count = 100 + Math.floor(Math.random() * 100);
+            if(fwIndexPointer + count >= fwMaxParticles) fwIndexPointer = 0; // 循环使用 Buffer
+            
+            // 随机位置 (在爱心后面)
+            const x = (Math.random() - 0.5) * 30;
+            const y = (Math.random() - 0.5) * 20;
+            const z = -10 - Math.random() * 20; // 这里的 z 保证在背景
+            
+            const color = new THREE.Color();
+            color.setHSL(Math.random(), 1.0, 0.6); // 随机亮色
+
+            fireworks.push(new FireworkExplosion(fwIndexPointer, count, x, y, z, color));
+            fwIndexPointer += count;
+        }
+
+        // ================= 4. 文字与交互 =================
+        const loader = new FontLoader();
+        let textMesh;
+        loader.load('https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_bold.typeface.json', function (font) {
+            document.getElementById('loading').style.display = 'none';
+            
+            const textGeo = new TextGeometry(CONFIG.title3D, { font: font, size: 3, height: 0.2 });
+            textGeo.center();
+            textMesh = new THREE.Mesh(textGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            textMesh.scale.set(0,0,0);
+            scene.add(textMesh);
+
+            initEvents();
+        });
+
+        let isMorphed = false;
+
+        function initEvents() {
+            const exploreBtn = document.getElementById('exploreBtn');
+            const wishBtn = document.getElementById('wishBtn');
+            const ui = document.getElementById('ui');
+            const letterContainer = document.getElementById('letter-container');
+
+            // Phase 1: Explore
+            exploreBtn.addEventListener('click', () => {
+                // 播放音乐 (如果有)
+                // document.getElementById('bgm').play();
+                
+                gsap.to(ui, { opacity: 0, pointerEvents: 'none' });
+
+                const tl = gsap.timeline();
+                tl.to(camera.position, { z: 12, duration: 2.5, ease: "power2.inOut" });
+                tl.to(ringMesh.rotation, { z: Math.PI, duration: 3 }, "<");
+                tl.to(particles.rotation, { y: Math.PI, duration: 3 }, "<");
+                tl.to(textMesh.scale, { x: 1, y: 1, z: 1, duration: 1, ease: "back.out" }, "-=0.5");
+                tl.to(letterContainer, { autoAlpha: 1, pointerEvents: "auto", duration: 1, onComplete: startTypewriter });
+            });
+
+            // Phase 2: Wish (Morph & Fireworks)
+            wishBtn.addEventListener('click', () => {
+                isMorphed = true;
+                
+                // 1. UI 退出
+                gsap.to(letterContainer, { autoAlpha: 0, duration: 0.5 });
+                gsap.to(textMesh.scale, { x: 0, y: 0, z: 0, duration: 0.5 });
+                gsap.to(ringMesh.scale, { x: 0, y: 0, z: 0, duration: 1 });
+
+                // 2. 粒子变色与变形 (The Magic Morph)
+                const morphObj = { val: 0 };
+                const targetColor = CONFIG.colors.heartColor; // 目标粉色
+
+                gsap.to(morphObj, {
+                    val: 1,
+                    duration: 3.5,
+                    ease: "power2.inOut",
+                    onUpdate: () => {
+                        const attrPos = particles.geometry.attributes.position;
+                        const attrCol = particles.geometry.attributes.color;
+
+                        for(let i=0; i<CONFIG.particleCount; i++) {
+                            // 插值位置
+                            const ix = i*3, iy = i*3+1, iz = i*3+2;
+                            attrPos.array[ix] = spherePos[ix] + (heartPos[ix] - spherePos[ix]) * morphObj.val;
+                            attrPos.array[iy] = spherePos[iy] + (heartPos[iy] - spherePos[iy]) * morphObj.val;
+                            attrPos.array[iz] = spherePos[iz] + (heartPos[iz] - spherePos[iz]) * morphObj.val;
+
+                            // 插值颜色：解决“怪异”的关键
+                            // 我们根据 progress (morphObj.val) 从 startColor 变到 targetColor
+                            attrCol.array[ix] = startColors[ix] + (targetColor.r - startColors[ix]) * morphObj.val;
+                            attrCol.array[iy] = startColors[iy] + (targetColor.g - startColors[iy]) * morphObj.val;
+                            attrCol.array[iz] = startColors[iz] + (targetColor.b - startColors[iz]) * morphObj.val;
+                        }
+                        attrPos.needsUpdate = true;
+                        attrCol.needsUpdate = true;
+                    }
+                });
+
+                // 3. 镜头稍微后退
+                gsap.to(camera.position, { z: 20, duration: 3 });
+                
+                // 4. 辉光变粉
+                gsap.to(bloomPass, { strength: 2.5, radius: 0.8, duration: 2 });
+
+                // 5. 启动烟花循环
+                setInterval(() => {
+                    launchFirework();
+                }, 800); // 每0.8秒发射一个
+                launchFirework(); // 立即发射一个
+            });
+        }
+
+        // 打字机
+        function startTypewriter() {
+            const titleEl = document.getElementById('letter-title');
+            const bodyEl = document.getElementById('letter-body');
+            const wishBtn = document.getElementById('wishBtn');
+            titleEl.textContent = CONFIG.letterTitle;
+            let lineIndex = 0, charIndex = 0;
+            const lines = CONFIG.letterBody;
+            const cursor = document.createElement('span');
+            cursor.className = 'cursor';
+            bodyEl.appendChild(cursor);
+
+            function typeLine() {
+                if (lineIndex < lines.length) {
+                    const currentLine = lines[lineIndex];
+                    if (charIndex < currentLine.length) {
+                        bodyEl.insertBefore(document.createTextNode(currentLine.charAt(charIndex)), cursor);
+                        charIndex++;
+                        setTimeout(typeLine, CONFIG.typingSpeed);
+                    } else {
+                        bodyEl.insertBefore(document.createElement('br'), cursor);
+                        lineIndex++; charIndex = 0;
+                        setTimeout(typeLine, 300);
+                    }
+                } else {
+                    wishBtn.style.display = "inline-block";
+                    gsap.to(wishBtn, { opacity: 1, duration: 1 });
+                }
+            }
+            typeLine();
+        }
+
+        // --- 动画循环 ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const time = clock.getElapsedTime();
+
+            // 1. 主粒子动画
+            if (!isMorphed) {
+                particles.rotation.y = time * 0.1;
+                ringMesh.rotation.z = time * 0.05;
+            } else {
+                // 爱心跳动
+                const beat = 1 + Math.sin(time * 2.5) * 0.03;
+                particles.scale.set(beat, beat, beat);
+                particles.rotation.y = Math.sin(time * 0.5) * 0.2;
+            }
+
+            // 2. 烟花物理更新
+            for (let i = fireworks.length - 1; i >= 0; i--) {
+                if (!fireworks[i].update()) {
+                    fireworks.splice(i, 1); // 移除死亡烟花
+                }
+            }
+            // 告诉 GPU 更新烟花数据
+            fwGeometry.attributes.position.needsUpdate = true;
+            fwGeometry.attributes.size.needsUpdate = true;
+            fwGeometry.attributes.color.needsUpdate = true;
+
+            composer.render();
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
